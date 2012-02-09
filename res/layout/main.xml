@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:layout_width="fill_parent"
+    android:layout_height="fill_parent"
+    >
+    <TextView
+        android:layout_width="260dp"
+        android:layout_height="wrap_content"
+        android:text="Card Number"
+        android:layout_gravity="center"
+        android:layout_marginTop="40dp"
+        />
+    <LinearLayout
+        android:layout_height="wrap_content"
+        android:layout_width="260dp"
+        android:layout_gravity="center"
+        >
+        <AutoCompleteTextView
+                android:layout_height="wrap_content"
+                android:layout_width="220dp"
+                android:height="10dp"
+                android:width="16dp"
+                android:id="@+id/card_number"
+                android:inputType="number"
+                android:maxLength="16"
+            />
+        <Button
+            android:layout_height="wrap_content"
+            android:layout_width="40dp"
+            android:id="@+id/set_card_number"
+            android:text=">"
+            android:onClick="inputCardNumber"
+            />
+    </LinearLayout>
+</LinearLayout>
+
