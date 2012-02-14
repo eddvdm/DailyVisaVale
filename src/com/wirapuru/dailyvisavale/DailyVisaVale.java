@@ -1,10 +1,14 @@
 package com.wirapuru.dailyvisavale;
 
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.SharedPreferences;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowManager;
 import android.widget.*;
 import org.htmlcleaner.CleanerProperties;
 import org.htmlcleaner.HtmlCleaner;
@@ -20,6 +24,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public class DailyVisaVale extends Activity
@@ -34,6 +39,9 @@ public class DailyVisaVale extends Activity
     public static final String URL_TO_FETCH_CARD_DATA = "http://www.cbss.com.br/inst/convivencia/SaldoExtrato.jsp?numeroCartao="; 
 
     protected String current_card_number = null;
+    private UI ui = new UI();
+    
+    private static Integer active_dialog_id;
 
     /** Called when the activity is first created. */
     @Override
@@ -44,7 +52,9 @@ public class DailyVisaVale extends Activity
 
         // autocomplete past typed card numbers
 //        clearTypedCardNumbers();
+        Integer wait_dialog_id = this.ui.startWaiting();
         buildCardNumberAutoComplete();
+        ui.stopWaiting(wait_dialog_id);
     }
 
     /**
@@ -56,10 +66,11 @@ public class DailyVisaVale extends Activity
     public void inputCardNumber(View view) {
         final AutoCompleteTextView tx_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
         String str_card_number = tx_card_number.getText().toString();
+        Integer wait_dialog_id = this.ui.startWaiting();
 
-        if (cardNumberIsValid(str_card_number)) {
-            Toast toast = Toast.makeText(getApplicationContext(), "Saving card number: "+str_card_number, Toast.LENGTH_SHORT);
-            toast.show();
+        if (wait_dialog_id > 0) {// && cardNumberIsValid(str_card_number)) {
+            this.active_dialog_id = wait_dialog_id;
+//            hideSoftKeyboard(); // todo make hiding keyboard to work
 
             saveCardNumber(str_card_number);
             setCurrentCardNumber(str_card_number);
@@ -67,11 +78,14 @@ public class DailyVisaVale extends Activity
             logCardNumbers();
 
             try {
+//Thread.sleep(10000);
                 CardData card = new CardData(str_card_number);
                 card.fetchRemoteData();
+//                this.ui.stopWaiting(wait_dialog_id);
             } catch (Exception e) {
                 e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
             }
+
         } else {
             Toast toast = Toast.makeText(getApplicationContext(), "Invalid card number: "+str_card_number, Toast.LENGTH_SHORT);
             toast.show();
@@ -180,16 +194,23 @@ public class DailyVisaVale extends Activity
         editor.commit();
     }
 
+    public void hideSoftKeyboard() {
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN);
+    }
+
     public class CardData {
 
         public static final String PREFS_CARD_PREFIX = "card__";
         public static final String PREF_CARD_JSON_DATA = "json_data";
         
         public static final String REQUIRED_SUBSTR_BALANCE = "Saldo dispon";
-        public static final String MONEY_VALUE_SUBSTR = "R$";
+        public static final String REQUIRED_SUBSTR_LAST_DATE = "ltima disponibiliza";
 
-        private String card_number;
-        private List<String> raw_data;
+        public static final String RAW_DATA_BALANCE = "balance";
+        public static final String RAW_DATA_LAST_DATE = "last_date";
+
+        protected String card_number;
+        protected final HashMap<String,Object> raw_data = new HashMap<String, Object>();
 
         public CardData(String card_number) throws Exception{
             if (!numberIsValid(card_number))
@@ -207,7 +228,7 @@ public class DailyVisaVale extends Activity
                         new JSONArray(prefs_data.getString(PREF_CARD_NUMBERS_JSON, null)) :
                             new JSONArray();
 
-                this.raw_data = Util.JSONArrayToList(json_data);
+//                this.raw_data = Util.JSONArrayToList(json_data);
                 
             } catch (Exception e) {
                 Toast toast = Toast.makeText(getApplicationContext(), e.getMessage(), Toast.LENGTH_LONG);
@@ -218,50 +239,87 @@ public class DailyVisaVale extends Activity
         public void fetchRemoteData() {
 
             try {
-                HtmlCleaner pageParser = new HtmlCleaner();
-                CleanerProperties props = pageParser.getProperties();
-                props.setAllowHtmlInsideAttributes(true);
-                props.setAllowMultiWordAttributes(true);
-                props.setRecognizeUnicodeChars(true);
-                props.setOmitComments(true);
+                ProgressDialog dialog = new ProgressDialog(DailyVisaVale.this);
+                dialog.setTitle("Coletando dados");
+                dialog.setMessage("Por favor, aguarde...");
 
-                URL url = new URL(URL_TO_FETCH_CARD_DATA+this.getCardNumber());
-                URLConnection conn = url.openConnection();
-                TagNode node = pageParser.clean(new InputStreamReader(conn.getInputStream()));
+                HashMap<String, String> to_fetch = new HashMap<String, String>();
+                
+                to_fetch.put(URL_TO_FETCH_CARD_DATA+this.getCardNumber(), "//td[@class='corUm fontWeightDois']");
+                to_fetch.put(URL_TO_FETCH_CARD_DATA+this.getCardNumber(), "//td[@class='corUm fontWeightDois']---1");
 
-                String xpath_expression = "//td[@class='corUm fontWeightDois']";
-
-                try {
-                    Object[] td_nodes = node.evaluateXPath(xpath_expression);
-
-                    StringBuilder found_balance = new StringBuilder();
-                    for (int i =0; i < td_nodes.length; i++) {
-                        if (found_balance.length() == 0) {
-                            List children = ((TagNode)td_nodes[i]).getChildren();
-                            if (children.size() > 0) {
-                                String str = children.get(0).toString();
-
-                                if (str.contains(REQUIRED_SUBSTR_BALANCE)) {
-                                    found_balance.append(((TagNode)td_nodes[i+1]).getChildren().get(0).toString());
-                                    Log.v(LOG_TAG_ALL, "Found balance next to td: "+str);
-                                } else {
-                                    Log.v(LOG_TAG_ALL, "Not found balance in td: "+str);
-                                }
-                            }
-                        } else {
-                            Log.v(LOG_TAG_ALL, "Found balance: "+found_balance);
-                            Toast toast = Toast.makeText(getApplicationContext(), "Found balance: "+found_balance, Toast.LENGTH_LONG);
-                            toast.show();
-                            break;
-                        }
-                    }
-
-                } catch (XPatherException e) {
-                    e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+                RemoteParsedData task = new RemoteParsedData();
+                
+                for (String key : to_fetch.keySet()) {
+                    task.execute(key, to_fetch.get(key));
                 }
 
-            } catch (IOException e) {
-                e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+
+//                HtmlCleaner pageParser = new HtmlCleaner();
+//                CleanerProperties props = pageParser.getProperties();
+//                props.setAllowHtmlInsideAttributes(true);
+//                props.setAllowMultiWordAttributes(true);
+//                props.setRecognizeUnicodeChars(true);
+//                props.setOmitComments(true);
+//
+//                URL url = new URL(URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+//                URLConnection conn = url.openConnection();
+//                TagNode node = pageParser.clean(new InputStreamReader(conn.getInputStream()));
+//
+//            String xpath_expression = "//td"; //[@class='corUm fontWeightDois']";
+//
+//                try {
+//                    Object[] td_nodes = node.evaluateXPath(xpath_expression);
+//
+//                    StringBuilder found_balance = new StringBuilder();
+//                    StringBuilder found_last_date = new StringBuilder();
+//
+//                    for (int i =0; i < td_nodes.length; i++) {
+//
+//                        // balance
+//                        if (found_balance.length() == 0) {
+//                            List children = ((TagNode)td_nodes[i]).getChildren();
+//                            if (children.size() > 0) {
+//                                String str = children.get(0).toString();
+//
+//                                if (str.contains(REQUIRED_SUBSTR_BALANCE)) {
+//                                    found_balance.append(((TagNode)td_nodes[i+1]).getChildren().get(0).toString());
+//                                    Log.v(LOG_TAG_ALL, "Found balance next to td: "+str);
+//                                }
+//                            }
+//                        } else {
+//                            Float float_balance = extractMoneyValue(found_balance.toString());
+//                            Log.v(LOG_TAG_ALL, "Found balance: "+float_balance.toString());
+//                            Toast toast = Toast.makeText(getApplicationContext(), "Found balance: "+float_balance.toString(), Toast.LENGTH_LONG);
+//                            toast.show();
+//                            this.raw_data.put(RAW_DATA_BALANCE, float_balance.toString());
+//                        }
+//
+//                        // last date
+//                        if (found_last_date.length() == 0) {
+//                            List children = ((TagNode)td_nodes[i]).getChildren();
+//                            if (children.size() > 0) {
+//                                String str = children.get(0).toString();
+//
+//                                if (str.contains(REQUIRED_SUBSTR_LAST_DATE)) {
+//                                    found_last_date.append(((TagNode)td_nodes[i+1]).getChildren().get(0).toString());
+//                                    Log.v(LOG_TAG_ALL, "Found last date next to td: "+str);
+//                                }
+//                            }
+//                        } else {
+//                            Log.v(LOG_TAG_ALL, "Found last date: "+found_last_date.toString());
+//                            Toast toast = Toast.makeText(getApplicationContext(), "Found last date: "+found_last_date.toString(), Toast.LENGTH_LONG);
+//                            toast.show();
+//                            this.raw_data.put(RAW_DATA_LAST_DATE, found_last_date.toString());
+//                        }
+//                    }
+//
+//                } catch (XPatherException e) {
+//                    e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+//                }
+
+            } catch (Exception e) {
+                e.printStackTrace();
             }
 
 
@@ -279,11 +337,162 @@ public class DailyVisaVale extends Activity
             return card_number.length() == 16;
         }
 
-//        final public float extractMoneyValue(String value) {
-//
-//
-//        }
+        final public Float extractMoneyValue(String value) {
+            return Float.parseFloat(value.split(" ")[1].replace(".","").replace(",","."));
+        }
     }
+
+
+    private class RemoteParsedData extends AsyncTask<String, Void, String> {
+        
+        public final HashMap<URL, TagNode> tagnode_cache = new HashMap<URL, TagNode>();
+        
+        @Override
+        protected String doInBackground(String... strings) {
+
+            StringBuilder parsed_value = new StringBuilder();
+
+            try {
+                URL url = new URL(strings[0]);
+
+                // process xpath_expression due a possible bug in API 7 (following-sibling)
+                String xpath_expression_modified = strings[1];
+                String[] xpath_expression_parts = xpath_expression_modified.split("---");
+                String xpath_expression = xpath_expression_parts[0];
+                Integer nodes_ahead = xpath_expression_parts.length > 1 ? Integer.parseInt(xpath_expression_parts[1]) : 0;
+
+                // parse
+                HtmlCleaner pageParser = new HtmlCleaner();
+                CleanerProperties props = pageParser.getProperties();
+                props.setAllowHtmlInsideAttributes(true);
+                props.setAllowMultiWordAttributes(true);
+                props.setRecognizeUnicodeChars(true);
+                props.setOmitComments(true);
+
+                TagNode node = tagnode_cache.containsKey(url) ?
+                        tagnode_cache.get(url) :
+                            pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
+
+                try {
+                    Object[] td_nodes = node.evaluateXPath(xpath_expression);
+                    for (int i =0; i < td_nodes.length; i++) {
+                        if (parsed_value.length() == 0) {
+                            List children = ((TagNode)td_nodes[i]).getChildren();
+                            if (children.size() > 0) {
+                                String str = children.get(0).toString();
+
+                                parsed_value.append(((TagNode)td_nodes[i+nodes_ahead]).getChildren().get(0).toString());
+                                Log.v(LOG_TAG_ALL, "Found value: "+str);
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                } catch (XPatherException e) {
+                    e.printStackTrace();
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            return parsed_value.toString();
+        }
+
+        @Override
+        public void onPostExecute(String result) {
+
+            Toast toast = Toast.makeText(getApplicationContext(), result, Toast.LENGTH_LONG);
+            toast.show();
+        }
+    }
+
+
+    public class UI {
+        
+        private final static String MSG_DEFAULT_WAIT = "Please wait..";
+        
+        private final static String LAYER_DIALOG = "dialog";
+        private final static String LAYER_TOAST = "toast";
+        
+        private Integer element_internal_id = 0;
+        
+        private HashMap<String, Object> layers = new HashMap<String, Object>();
+        private HashMap<String, Object> layers_queue = new HashMap<String, Object>();
+
+        private HashMap<Integer, Object> elements = new HashMap<Integer, Object>();        
+
+        public UI() {
+            setLayersIdle();
+        }
+        
+        private void setLayersIdle() {
+            this.layers.put(LAYER_DIALOG, null);
+            this.layers.put(LAYER_TOAST, null);
+        }
+
+        public Integer startWaiting() {
+            return startWaiting("", MSG_DEFAULT_WAIT);
+        }
+
+        public Integer startWaiting(String msg) {
+            return startWaiting("", msg);
+        }
+
+        public Integer startWaiting(String dialog_title, String dialog_msg) {
+            
+            ProgressDialog dialog = new ProgressDialog(DailyVisaVale.this);
+            dialog.setTitle(dialog_title);
+            dialog.setMessage(dialog_msg);
+
+            Integer element_internal_id = getNewElementId();
+            this.elements.put(element_internal_id, dialog);
+            
+            if (throwAtLayer(LAYER_DIALOG, element_internal_id)) {
+                dialog.show();
+            }
+            return element_internal_id;
+        }
+        
+        public void stopWaiting(Integer element_id) {
+            ProgressDialog dialog = (ProgressDialog) this.elements.get(element_id);
+            
+            if (this.layers.get(LAYER_DIALOG) == dialog) {
+                if (dialog.isShowing())
+                    dialog.dismiss();
+                
+                idleLayer(LAYER_DIALOG);
+            } // todo implement queue management
+            
+            this.elements.remove(element_id);
+        }
+        
+        private boolean layerIsBusy(String layer) {
+            return this.layers.get(layer) != null;
+        }
+        
+        private boolean throwAtLayer(String layer, Integer element_internal_id) {
+            if (!layerIsBusy(layer)) {
+                Object obj = this.elements.get(element_internal_id);
+                this.layers.put(layer, obj);
+                return true;
+            } // todo implement queue management
+            
+            return false;
+        }
+        
+        private void idleLayer(String layer) {
+            if (this.layers.containsKey(layer)) {
+                this.layers.remove(layer);
+            }
+            this.layers.put(layer, null);
+        }
+        
+        private Integer getNewElementId() {
+            return this.element_internal_id++;
+        }
+        
+    }
+
 
     
     
