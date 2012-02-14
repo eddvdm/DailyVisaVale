@@ -206,8 +206,8 @@ public class DailyVisaVale extends Activity
         public static final String REQUIRED_SUBSTR_BALANCE = "Saldo dispon";
         public static final String REQUIRED_SUBSTR_LAST_DATE = "ltima disponibiliza";
 
-        public static final String RAW_DATA_BALANCE = "balance";
-        public static final String RAW_DATA_LAST_DATE = "last_date";
+        public static final String DATA_BALANCE = "balance";
+        public static final String DATA_LAST_DATE = "last_date";
 
         protected String card_number;
         protected final HashMap<String,Object> raw_data = new HashMap<String, Object>();
@@ -245,14 +245,11 @@ public class DailyVisaVale extends Activity
 
                 HashMap<String, String> to_fetch = new HashMap<String, String>();
                 
-                to_fetch.put(URL_TO_FETCH_CARD_DATA+this.getCardNumber(), "//td[@class='corUm fontWeightDois']");
-                to_fetch.put(URL_TO_FETCH_CARD_DATA+this.getCardNumber(), "//td[@class='corUm fontWeightDois']---1");
+                to_fetch.put("//td[@class='corUm fontWeightDois']", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+                to_fetch.put("//td[@class='corUm fontWeightDois']---1", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
 
                 RemoteParsedData task = new RemoteParsedData();
-                
-                for (String key : to_fetch.keySet()) {
-                    task.execute(key, to_fetch.get(key));
-                }
+                task.execute(to_fetch);
 
 
 //                HtmlCleaner pageParser = new HtmlCleaner();
@@ -342,67 +339,71 @@ public class DailyVisaVale extends Activity
         }
     }
 
-
-    private class RemoteParsedData extends AsyncTask<String, Void, String> {
+    private class RemoteParsedData extends AsyncTask<HashMap<String, String>, Void, HashMap<String, StringBuilder>> {
         
         public final HashMap<URL, TagNode> tagnode_cache = new HashMap<URL, TagNode>();
-        
+
         @Override
-        protected String doInBackground(String... strings) {
-
-            StringBuilder parsed_value = new StringBuilder();
-
-            try {
-                URL url = new URL(strings[0]);
-
-                // process xpath_expression due a possible bug in API 7 (following-sibling)
-                String xpath_expression_modified = strings[1];
-                String[] xpath_expression_parts = xpath_expression_modified.split("---");
-                String xpath_expression = xpath_expression_parts[0];
-                Integer nodes_ahead = xpath_expression_parts.length > 1 ? Integer.parseInt(xpath_expression_parts[1]) : 0;
-
-                // parse
-                HtmlCleaner pageParser = new HtmlCleaner();
-                CleanerProperties props = pageParser.getProperties();
-                props.setAllowHtmlInsideAttributes(true);
-                props.setAllowMultiWordAttributes(true);
-                props.setRecognizeUnicodeChars(true);
-                props.setOmitComments(true);
-
-                TagNode node = tagnode_cache.containsKey(url) ?
-                        tagnode_cache.get(url) :
-                            pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
+        protected HashMap<String, StringBuilder> doInBackground(HashMap<String, String>... to_fetch) {
+            
+            HashMap<String, StringBuilder> parsed_values = new HashMap<String, StringBuilder>();
+            
+            for (String key : to_fetch[0].keySet()) {
+                String[] strings = {key, to_fetch[0].get(key)};
+                parsed_values.put(key, new StringBuilder());
 
                 try {
-                    Object[] td_nodes = node.evaluateXPath(xpath_expression);
-                    for (int i =0; i < td_nodes.length; i++) {
-                        if (parsed_value.length() == 0) {
-                            List children = ((TagNode)td_nodes[i]).getChildren();
-                            if (children.size() > 0) {
-                                String str = children.get(0).toString();
+                    URL url = new URL(strings[1]);
 
-                                parsed_value.append(((TagNode)td_nodes[i+nodes_ahead]).getChildren().get(0).toString());
-                                Log.v(LOG_TAG_ALL, "Found value: "+str);
+                    // process xpath_expression due a possible bug in API 7 (following-sibling)
+                    String xpath_expression_modified = strings[0];
+                    String[] xpath_expression_parts = xpath_expression_modified.split("---");
+                    String xpath_expression = xpath_expression_parts[0];
+                    Integer nodes_ahead = xpath_expression_parts.length > 1 ? Integer.parseInt(xpath_expression_parts[1]) : 0;
+
+                    // parse
+                    HtmlCleaner pageParser = new HtmlCleaner();
+                    CleanerProperties props = pageParser.getProperties();
+                    props.setAllowHtmlInsideAttributes(true);
+                    props.setAllowMultiWordAttributes(true);
+                    props.setRecognizeUnicodeChars(true);
+                    props.setOmitComments(true);
+
+                    TagNode node = tagnode_cache.containsKey(url) ?
+                            tagnode_cache.get(url) :
+                            pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
+
+                    try {
+                        Object[] td_nodes = node.evaluateXPath(xpath_expression);
+                        for (int i =0; i < td_nodes.length; i++) {
+                            if (parsed_values.get(key).length() == 0) {
+                                List children = ((TagNode)td_nodes[i]).getChildren();
+                                if (children.size() > 0) {
+                                    parsed_values.get(key).append(((TagNode)td_nodes[i+nodes_ahead]).getChildren().get(0).toString());
+                                    Log.v(LOG_TAG_ALL, "Found value: "+parsed_values);
+                                }
+                            } else {
+                                break;
                             }
-                        } else {
-                            break;
                         }
+                    } catch (XPatherException e) {
+                        e.printStackTrace();
                     }
-                } catch (XPatherException e) {
+                } catch (IOException e) {
                     e.printStackTrace();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
             }
-
-            return parsed_value.toString();
+            
+            return parsed_values;
         }
 
         @Override
-        public void onPostExecute(String result) {
+        public void onPostExecute(HashMap<String, StringBuilder> result) {
 
-            Toast toast = Toast.makeText(getApplicationContext(), result, Toast.LENGTH_LONG);
-            toast.show();
+            for (String key : result.keySet()) {
+                Toast toast = Toast.makeText(getApplicationContext(), result.get(key), Toast.LENGTH_SHORT);
+                toast.show();
+            }
         }
     }
 
