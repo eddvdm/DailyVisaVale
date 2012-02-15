@@ -17,6 +17,7 @@
         android:layout_gravity="center"
         >
         <AutoCompleteTextView
+                android:imeOptions="actionDone"
                 android:layout_height="wrap_content"
                 android:layout_width="220dp"
                 android:height="10dp"
@@ -30,6 +31,7 @@
             android:layout_width="40dp"
             android:id="@+id/set_card_number"
             android:text=">"
+            android:imeOptions="actionGo"
             android:onClick="inputCardNumber"
             />
     </LinearLayout>

@@ -5,7 +5,6 @@ import android.app.ProgressDialog;
 import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
-import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -15,15 +14,10 @@ import org.htmlcleaner.HtmlCleaner;
 import org.htmlcleaner.TagNode;
 import org.htmlcleaner.XPatherException;
 import org.json.JSONArray;
-import org.json.JSONException;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLConnection;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
@@ -36,15 +30,14 @@ public class DailyVisaVale extends Activity
     public static final String PREF_CARD_NUMBERS_JSON = "json";
     public static final String PREFS_CURRENT_CARD_NUMBER = "current_card_number";
     public static final String PREF_CURRENT_CARD_NUMBER = "card_number";
-    
+    public static final String PREFS_LAST_CARD_NUMBER = "last_card_number";
+    public static final String PREF_LAST_CARD_NUMBER = "card_number";
+
     public static final String LOG_TAG_ALL = "dvv";
     
     public static final String URL_TO_FETCH_CARD_DATA = "http://www.cbss.com.br/inst/convivencia/SaldoExtrato.jsp?numeroCartao="; 
 
     protected String current_card_number = null;
-    private UI ui = new UI();
-    
-    private static Integer active_dialog_id;
 
     /** Called when the activity is first created. */
     @Override
@@ -55,9 +48,8 @@ public class DailyVisaVale extends Activity
 
         // autocomplete past typed card numbers
 //        clearTypedCardNumbers();
-        Integer wait_dialog_id = this.ui.startWaiting();
+        rememberLastCard();
         buildCardNumberAutoComplete();
-        ui.stopWaiting(wait_dialog_id);
     }
 
     /**
@@ -69,32 +61,25 @@ public class DailyVisaVale extends Activity
     public void inputCardNumber(View view) {
         AutoCompleteTextView tx_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
         String str_card_number = tx_card_number.getText().toString();
-        Integer wait_dialog_id = this.ui.startWaiting();
 
-        if (wait_dialog_id > 0) {// && cardNumberIsValid(str_card_number)) {
-            this.active_dialog_id = wait_dialog_id;
-//            hideSoftKeyboard(); // todo make hiding keyboard to work
-
+        if (cardNumberIsValid(str_card_number)) {
             saveCardNumber(str_card_number);
             setCurrentCardNumber(str_card_number);
             buildCardNumberAutoComplete();
             logCardNumbers();
 
             try {
-//Thread.sleep(10000);
                 card.setAndLoad(str_card_number);
                 card.fetchRemoteData();
-//                this.ui.stopWaiting(wait_dialog_id);
             } catch (Exception e) {
-                e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+                e.printStackTrace();
             }
 
         } else {
             Toast toast = Toast.makeText(getApplicationContext(), "Invalid card number: "+str_card_number, Toast.LENGTH_SHORT);
             toast.show();
         }
-    }
-    
+    }   
     
     public void setCurrentCardNumber(String card_number) {
         this.current_card_number = card_number;
@@ -105,6 +90,18 @@ public class DailyVisaVale extends Activity
         return card_number.length() == 16;
     }
     
+    public boolean rememberLastCard() {
+        final SharedPreferences prefs_last_card_number = getSharedPreferences(PREFS_LAST_CARD_NUMBER, 0);
+
+        if (prefs_last_card_number.contains(PREF_LAST_CARD_NUMBER)) {
+            final AutoCompleteTextView txt_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
+            txt_card_number.setText(prefs_last_card_number.getString(PREF_LAST_CARD_NUMBER, null));
+            return true;
+        }
+
+        return false;
+    }    
+
     public void buildCardNumberAutoComplete() {
         List<String> card_numbers_list = Util.JSONArrayToList(getTypedCardNumbers());
         
@@ -128,7 +125,7 @@ public class DailyVisaVale extends Activity
                 if (json_string != null) {
                     List<String> card_numbers = Util.JSONArrayToList(new JSONArray(json_string));
                     if (card_numbers.contains(str_card_number))
-                        return;
+                        throw new CardNumberExistsException();
                     for (String card_number : card_numbers)
                         json_array.put(card_number);
                 }
@@ -140,14 +137,23 @@ public class DailyVisaVale extends Activity
             prefs_editor.putString(PREF_CARD_NUMBERS_JSON, json_array.toString());
             prefs_editor.commit();
 
-            // set last card number todo
-            //final SharedPreferences prefs_last = getSharedPreferences(PREFS_LAST_CARD_NUMBER, 0);
-            //prefs_last.
+            // set last card number
+            saveLastCardNumber(str_card_number);
 
+        } catch (CardNumberExistsException e) {
+            saveLastCardNumber(str_card_number);    
         } catch (Exception e) {
             Toast toast = Toast.makeText(getApplicationContext(), e.getMessage(), Toast.LENGTH_LONG);
             toast.show();
         }
+    }
+    
+    public void saveLastCardNumber(String str_card_number) {
+        final SharedPreferences prefs_last_card_number = getSharedPreferences(PREFS_LAST_CARD_NUMBER, 0);
+        SharedPreferences.Editor prefs_editor = prefs_last_card_number.edit();
+        prefs_editor.clear();
+        prefs_editor.putString(PREF_LAST_CARD_NUMBER, str_card_number);
+        prefs_editor.commit();        
     }
 
 
@@ -242,6 +248,7 @@ public class DailyVisaVale extends Activity
                 dialog = new ProgressDialog(DailyVisaVale.this);
                 dialog.setTitle("Coletando dados");
                 dialog.setMessage("Por favor, aguarde...");
+                dialog.show();
 
                 HashMap<String, Object> to_fetch = new HashMap<String, Object>();
 
@@ -342,8 +349,7 @@ public class DailyVisaVale extends Activity
 
         @Override
         public void onPostExecute(HashMap<String, StringBuilder> result) {
-            
-            
+
             for (String key : result.keySet()) {
                 card.raw_data.put(key, result.get(key));
             }              
@@ -351,99 +357,11 @@ public class DailyVisaVale extends Activity
             Toast toast = Toast.makeText(getApplicationContext(), card.raw_data.toString(), Toast.LENGTH_LONG);
             toast.show();
 
-            // dialog still won't dismiss - newbie stuff for next commit
             dialog.dismiss();
         }
     }
 
-
-    public class UI {
-        
-        private final static String MSG_DEFAULT_WAIT = "Please wait..";
-        
-        private final static String LAYER_DIALOG = "dialog";
-        private final static String LAYER_TOAST = "toast";
-        
-        private Integer element_internal_id = 0;
-        
-        private HashMap<String, Object> layers = new HashMap<String, Object>();
-        private HashMap<String, Object> layers_queue = new HashMap<String, Object>();
-
-        private HashMap<Integer, Object> elements = new HashMap<Integer, Object>();        
-
-        public UI() {
-            setLayersIdle();
-        }
-        
-        private void setLayersIdle() {
-            this.layers.put(LAYER_DIALOG, null);
-            this.layers.put(LAYER_TOAST, null);
-        }
-
-        public Integer startWaiting() {
-            return startWaiting("", MSG_DEFAULT_WAIT);
-        }
-
-        public Integer startWaiting(String msg) {
-            return startWaiting("", msg);
-        }
-
-        public Integer startWaiting(String dialog_title, String dialog_msg) {
-            
-            ProgressDialog dialog = new ProgressDialog(DailyVisaVale.this);
-            dialog.setTitle(dialog_title);
-            dialog.setMessage(dialog_msg);
-
-            Integer element_internal_id = getNewElementId();
-            this.elements.put(element_internal_id, dialog);
-            
-            if (throwAtLayer(LAYER_DIALOG, element_internal_id)) {
-                dialog.show();
-            }
-            return element_internal_id;
-        }
-        
-        public void stopWaiting(Integer element_id) {
-            ProgressDialog dialog = (ProgressDialog) this.elements.get(element_id);
-            
-            if (this.layers.get(LAYER_DIALOG) == dialog) {
-                if (dialog.isShowing())
-                    dialog.dismiss();
-                
-                idleLayer(LAYER_DIALOG);
-            } // todo implement queue management
-            
-            this.elements.remove(element_id);
-        }
-        
-        private boolean layerIsBusy(String layer) {
-            return this.layers.get(layer) != null;
-        }
-        
-        private boolean throwAtLayer(String layer, Integer element_internal_id) {
-            if (!layerIsBusy(layer)) {
-                Object obj = this.elements.get(element_internal_id);
-                this.layers.put(layer, obj);
-                return true;
-            } // todo implement queue management
-            
-            return false;
-        }
-        
-        private void idleLayer(String layer) {
-            if (this.layers.containsKey(layer)) {
-                this.layers.remove(layer);
-            }
-            this.layers.put(layer, null);
-        }
-        
-        private Integer getNewElementId() {
-            return this.element_internal_id++;
-        }
-        
+    public class CardNumberExistsException extends Exception {
+               
     }
-
-
-    
-    
 }
