@@ -29,6 +29,9 @@ import java.util.List;
 
 public class DailyVisaVale extends Activity
 {
+    ProgressDialog dialog = null;
+    CardData card = new CardData();
+    
     public static final String PREFS_CARD_NUMBERS = "card_numbers";
     public static final String PREF_CARD_NUMBERS_JSON = "json";
     public static final String PREFS_CURRENT_CARD_NUMBER = "current_card_number";
@@ -64,7 +67,7 @@ public class DailyVisaVale extends Activity
      * @param view
      */
     public void inputCardNumber(View view) {
-        final AutoCompleteTextView tx_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
+        AutoCompleteTextView tx_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
         String str_card_number = tx_card_number.getText().toString();
         Integer wait_dialog_id = this.ui.startWaiting();
 
@@ -79,7 +82,7 @@ public class DailyVisaVale extends Activity
 
             try {
 //Thread.sleep(10000);
-                CardData card = new CardData(str_card_number);
+                card.setAndLoad(str_card_number);
                 card.fetchRemoteData();
 //                this.ui.stopWaiting(wait_dialog_id);
             } catch (Exception e) {
@@ -202,124 +205,60 @@ public class DailyVisaVale extends Activity
 
         public static final String PREFS_CARD_PREFIX = "card__";
         public static final String PREF_CARD_JSON_DATA = "json_data";
-        
-        public static final String REQUIRED_SUBSTR_BALANCE = "Saldo dispon";
-        public static final String REQUIRED_SUBSTR_LAST_DATE = "ltima disponibiliza";
 
         public static final String DATA_BALANCE = "balance";
         public static final String DATA_LAST_DATE = "last_date";
 
         protected String card_number;
-        protected final HashMap<String,Object> raw_data = new HashMap<String, Object>();
+        private final HashMap<String, Object> raw_data = new HashMap<String, Object>();
 
-        public CardData(String card_number) throws Exception{
+        public CardData() {}
+        
+        public void setAndLoad(String card_number) throws Exception{
             if (!numberIsValid(card_number))
-                throw new Exception("Invalida card number: '"+card_number+"'.");
+                throw new Exception("Invalid card number: '"+card_number+"'.");
 
             this.setCardNumber(card_number);
-            this.loadData();
+//            this.loadData();            
         }
 
-        private void loadData() {
-            final SharedPreferences prefs_data = getSharedPreferences(PREFS_CARD_PREFIX+this.getCardNumber(), 0);
-
-            try {
-                JSONArray json_data = prefs_data.contains(PREF_CARD_JSON_DATA) ?
-                        new JSONArray(prefs_data.getString(PREF_CARD_NUMBERS_JSON, null)) :
-                            new JSONArray();
-
-//                this.raw_data = Util.JSONArrayToList(json_data);
-                
-            } catch (Exception e) {
-                Toast toast = Toast.makeText(getApplicationContext(), e.getMessage(), Toast.LENGTH_LONG);
-                toast.show();
-            }
-        }
+//        private void loadData() {
+//            final SharedPreferences prefs_data = getSharedPreferences(PREFS_CARD_PREFIX+this.getCardNumber(), 0);
+//
+//            try {
+//                JSONArray json_data = prefs_data.contains(PREF_CARD_JSON_DATA) ?
+//                        new JSONArray(prefs_data.getString(PREF_CARD_NUMBERS_JSON, null)) :
+//                            new JSONArray();
+//
+//            } catch (Exception e) {
+//                Toast toast = Toast.makeText(getApplicationContext(), e.getMessage(), Toast.LENGTH_LONG);
+//                toast.show();
+//            }
+//        }
 
         public void fetchRemoteData() {
 
             try {
-                ProgressDialog dialog = new ProgressDialog(DailyVisaVale.this);
+                dialog = new ProgressDialog(DailyVisaVale.this);
                 dialog.setTitle("Coletando dados");
                 dialog.setMessage("Por favor, aguarde...");
 
-                HashMap<String, String> to_fetch = new HashMap<String, String>();
-                
-                to_fetch.put("//td[@class='corUm fontWeightDois']", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
-                to_fetch.put("//td[@class='corUm fontWeightDois']---1", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+                HashMap<String, Object> to_fetch = new HashMap<String, Object>();
+
+                HashMap<String, String> hashMap = new HashMap<String, String>();
+                hashMap.put("//td[@class='corUm fontWeightDois'][2]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+                to_fetch.put(DATA_BALANCE, hashMap);
+
+                hashMap = new HashMap<String, String>();
+                hashMap.put("//table[@class='consulta'][1]/tbody/tr[@class='rowTable'][3]/td[@class='corUm'][1]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+                to_fetch.put(DATA_LAST_DATE, hashMap);
 
                 RemoteParsedData task = new RemoteParsedData();
                 task.execute(to_fetch);
 
-
-//                HtmlCleaner pageParser = new HtmlCleaner();
-//                CleanerProperties props = pageParser.getProperties();
-//                props.setAllowHtmlInsideAttributes(true);
-//                props.setAllowMultiWordAttributes(true);
-//                props.setRecognizeUnicodeChars(true);
-//                props.setOmitComments(true);
-//
-//                URL url = new URL(URL_TO_FETCH_CARD_DATA+this.getCardNumber());
-//                URLConnection conn = url.openConnection();
-//                TagNode node = pageParser.clean(new InputStreamReader(conn.getInputStream()));
-//
-//            String xpath_expression = "//td"; //[@class='corUm fontWeightDois']";
-//
-//                try {
-//                    Object[] td_nodes = node.evaluateXPath(xpath_expression);
-//
-//                    StringBuilder found_balance = new StringBuilder();
-//                    StringBuilder found_last_date = new StringBuilder();
-//
-//                    for (int i =0; i < td_nodes.length; i++) {
-//
-//                        // balance
-//                        if (found_balance.length() == 0) {
-//                            List children = ((TagNode)td_nodes[i]).getChildren();
-//                            if (children.size() > 0) {
-//                                String str = children.get(0).toString();
-//
-//                                if (str.contains(REQUIRED_SUBSTR_BALANCE)) {
-//                                    found_balance.append(((TagNode)td_nodes[i+1]).getChildren().get(0).toString());
-//                                    Log.v(LOG_TAG_ALL, "Found balance next to td: "+str);
-//                                }
-//                            }
-//                        } else {
-//                            Float float_balance = extractMoneyValue(found_balance.toString());
-//                            Log.v(LOG_TAG_ALL, "Found balance: "+float_balance.toString());
-//                            Toast toast = Toast.makeText(getApplicationContext(), "Found balance: "+float_balance.toString(), Toast.LENGTH_LONG);
-//                            toast.show();
-//                            this.raw_data.put(RAW_DATA_BALANCE, float_balance.toString());
-//                        }
-//
-//                        // last date
-//                        if (found_last_date.length() == 0) {
-//                            List children = ((TagNode)td_nodes[i]).getChildren();
-//                            if (children.size() > 0) {
-//                                String str = children.get(0).toString();
-//
-//                                if (str.contains(REQUIRED_SUBSTR_LAST_DATE)) {
-//                                    found_last_date.append(((TagNode)td_nodes[i+1]).getChildren().get(0).toString());
-//                                    Log.v(LOG_TAG_ALL, "Found last date next to td: "+str);
-//                                }
-//                            }
-//                        } else {
-//                            Log.v(LOG_TAG_ALL, "Found last date: "+found_last_date.toString());
-//                            Toast toast = Toast.makeText(getApplicationContext(), "Found last date: "+found_last_date.toString(), Toast.LENGTH_LONG);
-//                            toast.show();
-//                            this.raw_data.put(RAW_DATA_LAST_DATE, found_last_date.toString());
-//                        }
-//                    }
-//
-//                } catch (XPatherException e) {
-//                    e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
-//                }
-
             } catch (Exception e) {
                 e.printStackTrace();
             }
-
-
         }
         
         public String getCardNumber() {
@@ -339,58 +278,62 @@ public class DailyVisaVale extends Activity
         }
     }
 
-    private class RemoteParsedData extends AsyncTask<HashMap<String, String>, Void, HashMap<String, StringBuilder>> {
+    private class RemoteParsedData extends AsyncTask<HashMap<String, Object>, Void, HashMap<String, StringBuilder>> {
         
         public final HashMap<URL, TagNode> tagnode_cache = new HashMap<URL, TagNode>();
 
         @Override
-        protected HashMap<String, StringBuilder> doInBackground(HashMap<String, String>... to_fetch) {
-            
+        protected HashMap<String, StringBuilder> doInBackground(HashMap<String, Object>... to_fetch) {
+
+            // parser from htmlcleaner
+            HtmlCleaner pageParser = new HtmlCleaner();
+            CleanerProperties props = pageParser.getProperties();
+            props.setAllowHtmlInsideAttributes(true);
+            props.setAllowMultiWordAttributes(true);
+            props.setRecognizeUnicodeChars(true);
+            props.setOmitComments(true);
+
+            // return values
             HashMap<String, StringBuilder> parsed_values = new HashMap<String, StringBuilder>();
             
-            for (String key : to_fetch[0].keySet()) {
-                String[] strings = {key, to_fetch[0].get(key)};
-                parsed_values.put(key, new StringBuilder());
-
-                try {
-                    URL url = new URL(strings[1]);
-
-                    // process xpath_expression due a possible bug in API 7 (following-sibling)
-                    String xpath_expression_modified = strings[0];
-                    String[] xpath_expression_parts = xpath_expression_modified.split("---");
-                    String xpath_expression = xpath_expression_parts[0];
-                    Integer nodes_ahead = xpath_expression_parts.length > 1 ? Integer.parseInt(xpath_expression_parts[1]) : 0;
-
-                    // parse
-                    HtmlCleaner pageParser = new HtmlCleaner();
-                    CleanerProperties props = pageParser.getProperties();
-                    props.setAllowHtmlInsideAttributes(true);
-                    props.setAllowMultiWordAttributes(true);
-                    props.setRecognizeUnicodeChars(true);
-                    props.setOmitComments(true);
-
-                    TagNode node = tagnode_cache.containsKey(url) ?
-                            tagnode_cache.get(url) :
-                            pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
+            for (String data_name_key : to_fetch[0].keySet()) {
+                HashMap<String, String> hashMap = (HashMap<String, String>)to_fetch[0].get(data_name_key);
+                for (String key : hashMap.keySet()) {
+                    String[] strings = {key, hashMap.get(key)};
+                    parsed_values.put(data_name_key, new StringBuilder());
 
                     try {
-                        Object[] td_nodes = node.evaluateXPath(xpath_expression);
-                        for (int i =0; i < td_nodes.length; i++) {
-                            if (parsed_values.get(key).length() == 0) {
-                                List children = ((TagNode)td_nodes[i]).getChildren();
-                                if (children.size() > 0) {
-                                    parsed_values.get(key).append(((TagNode)td_nodes[i+nodes_ahead]).getChildren().get(0).toString());
-                                    Log.v(LOG_TAG_ALL, "Found value: "+parsed_values);
+                        URL url = new URL(strings[1]);
+
+                        // process xpath_expression due a possible bug in API 7 (following-sibling)
+                        String xpath_expression_modified = strings[0];
+                        String[] xpath_expression_parts = xpath_expression_modified.split("---");
+                        String xpath_expression = xpath_expression_parts[0];
+                        Integer nodes_ahead = xpath_expression_parts.length > 1 ? Integer.parseInt(xpath_expression_parts[1]) : 0;
+
+                        TagNode node = tagnode_cache.containsKey(url) ?
+                                tagnode_cache.get(url) :
+                                pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
+
+                        try {
+                            Object[] td_nodes = node.evaluateXPath(xpath_expression);
+                            for (int i =0; i < td_nodes.length; i++) {
+                                if (parsed_values.get(data_name_key).length() == 0) {
+                                    List children = ((TagNode)td_nodes[i]).getChildren();
+                                    if (children.size() > 0) {
+                                        parsed_values.get(data_name_key).append(((TagNode)td_nodes[i+nodes_ahead]).getChildren().get(0).toString());
+                                        Log.v(LOG_TAG_ALL, "Found value: "+parsed_values);
+                                    }
+                                } else {
+                                    break;
                                 }
-                            } else {
-                                break;
                             }
+                        } catch (XPatherException e) {
+                            e.printStackTrace();
                         }
-                    } catch (XPatherException e) {
+                    } catch (IOException e) {
                         e.printStackTrace();
                     }
-                } catch (IOException e) {
-                    e.printStackTrace();
                 }
             }
             
@@ -399,11 +342,17 @@ public class DailyVisaVale extends Activity
 
         @Override
         public void onPostExecute(HashMap<String, StringBuilder> result) {
-
+            
+            
             for (String key : result.keySet()) {
-                Toast toast = Toast.makeText(getApplicationContext(), result.get(key), Toast.LENGTH_SHORT);
-                toast.show();
-            }
+                card.raw_data.put(key, result.get(key));
+            }              
+
+            Toast toast = Toast.makeText(getApplicationContext(), card.raw_data.toString(), Toast.LENGTH_LONG);
+            toast.show();
+
+            // dialog still won't dismiss - newbie stuff for next commit
+            dialog.dismiss();
         }
     }
 
