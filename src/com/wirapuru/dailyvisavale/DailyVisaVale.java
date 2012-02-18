@@ -9,6 +9,7 @@ import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.*;
+import hirondelle.date4j.DateTime;
 import org.htmlcleaner.CleanerProperties;
 import org.htmlcleaner.HtmlCleaner;
 import org.htmlcleaner.TagNode;
@@ -18,6 +19,7 @@ import org.json.JSONArray;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
@@ -172,7 +174,6 @@ public class DailyVisaVale extends Activity
         }
     }
 
-
     public void logCardNumbers() {
         try {
             String json_string = getTypedCardNumbers().toString();
@@ -211,12 +212,16 @@ public class DailyVisaVale extends Activity
 
         public static final String PREFS_CARD_PREFIX = "card__";
         public static final String PREF_CARD_JSON_DATA = "json_data";
-
         public static final String DATA_BALANCE = "balance";
         public static final String DATA_LAST_DATE = "last_date";
+        
+        private static final int FETCH_DATA_TIMEOUT_MS = 10000;
+        private static final int FETCH_DATA_LOOPTIME_MS = 1000;
 
         protected String card_number;
         private final HashMap<String, Object> raw_data = new HashMap<String, Object>();
+
+        private boolean fetching_remote_data = false;
 
         public CardData() {}
         
@@ -245,11 +250,6 @@ public class DailyVisaVale extends Activity
         public void fetchRemoteData() {
 
             try {
-                dialog = new ProgressDialog(DailyVisaVale.this);
-                dialog.setTitle("Coletando dados");
-                dialog.setMessage("Por favor, aguarde...");
-                dialog.show();
-
                 HashMap<String, Object> to_fetch = new HashMap<String, Object>();
 
                 HashMap<String, String> hashMap = new HashMap<String, String>();
@@ -260,8 +260,38 @@ public class DailyVisaVale extends Activity
                 hashMap.put("//table[@class='consulta'][1]/tbody/tr[@class='rowTable'][3]/td[@class='corUm'][1]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
                 to_fetch.put(DATA_LAST_DATE, hashMap);
 
-                RemoteParsedData task = new RemoteParsedData();
-                task.execute(to_fetch);
+                // start fetch process
+                try {
+                    dialog = new ProgressDialog(DailyVisaVale.this);
+                    dialog.setTitle("Coletando dados");
+                    dialog.setMessage("Por favor, aguarde...");
+                    dialog.show();
+
+                    fetching_remote_data = true;
+                    int time_elapsed = 0;
+                    
+                    RemoteParsedData task = new RemoteParsedData();
+                    task.execute(to_fetch);
+                    while (fetching_remote_data) {
+                        Thread.sleep(FETCH_DATA_LOOPTIME_MS);
+                        time_elapsed += FETCH_DATA_LOOPTIME_MS;
+                        if (time_elapsed > FETCH_DATA_TIMEOUT_MS)
+                            throw new FetchRemoteDataTimeoutException();
+                    }
+
+                    Toast toast = Toast.makeText(getApplicationContext(), raw_data.toString(), Toast.LENGTH_LONG);
+                    toast.show();
+
+//                    dialog.dismiss();
+
+//                BusinessDaysCalendar business_days = new BusinessDaysCalendar();
+//                DateTime start = DateTime.forDateOnly(2012,1,31);
+//                ArrayList<Integer> bdays = business_days.getBusinessDaysInRange(start, start.plus(0,1,0,0,0,0, DateTime.DayOverflow.LastDay));
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                } catch (FetchRemoteDataTimeoutException e) {
+                    e.printStackTrace();
+                }
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -352,16 +382,18 @@ public class DailyVisaVale extends Activity
 
             for (String key : result.keySet()) {
                 card.raw_data.put(key, result.get(key));
-            }              
-
-            Toast toast = Toast.makeText(getApplicationContext(), card.raw_data.toString(), Toast.LENGTH_LONG);
-            toast.show();
-
+            }     
+            
+            card.fetching_remote_data = false;
             dialog.dismiss();
         }
     }
 
     public class CardNumberExistsException extends Exception {
-               
+
     }
+
+    public class FetchRemoteDataTimeoutException extends Exception {
+
+    }    
 }
