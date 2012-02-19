@@ -5,6 +5,9 @@ import android.app.ProgressDialog;
 import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowManager;
@@ -19,9 +22,7 @@ import org.json.JSONArray;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 public class DailyVisaVale extends Activity
 {
@@ -250,49 +251,51 @@ public class DailyVisaVale extends Activity
         public void fetchRemoteData() {
 
             try {
-                HashMap<String, Object> to_fetch = new HashMap<String, Object>();
-
-                HashMap<String, String> hashMap = new HashMap<String, String>();
-                hashMap.put("//td[@class='corUm fontWeightDois'][2]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
-                to_fetch.put(DATA_BALANCE, hashMap);
-
-                hashMap = new HashMap<String, String>();
-                hashMap.put("//table[@class='consulta'][1]/tbody/tr[@class='rowTable'][3]/td[@class='corUm'][1]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
-                to_fetch.put(DATA_LAST_DATE, hashMap);
+//                HashMap<String, Object> to_fetch = new HashMap<String, Object>();
+//
+//                HashMap<String, String> hashMap = new HashMap<String, String>();
+//                hashMap.put("//td[@class='corUm fontWeightDois'][2]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+//                to_fetch.put(DATA_BALANCE, hashMap);
+//
+//                hashMap = new HashMap<String, String>();
+//                hashMap.put("//table[@class='consulta'][1]/tbody/tr[@class='rowTable'][3]/td[@class='corUm'][1]", URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+//                to_fetch.put(DATA_LAST_DATE, hashMap);
 
                 // start fetch process
-                try {
-                    dialog = new ProgressDialog(DailyVisaVale.this);
-                    dialog.setTitle("Coletando dados");
-                    dialog.setMessage("Por favor, aguarde...");
-                    dialog.show();
+                dialog = new ProgressDialog(DailyVisaVale.this);
+                dialog.setTitle("Coletando dados");
+                dialog.setMessage("Por favor, aguarde...");
+                dialog.show();
 
-                    fetching_remote_data = true;
-                    int time_elapsed = 0;
-                    
-                    RemoteParsedData task = new RemoteParsedData();
-                    task.execute(to_fetch);
-                    while (fetching_remote_data) {
-                        Thread.sleep(FETCH_DATA_LOOPTIME_MS);
-                        time_elapsed += FETCH_DATA_LOOPTIME_MS;
-                        if (time_elapsed > FETCH_DATA_TIMEOUT_MS)
-                            throw new FetchRemoteDataTimeoutException();
-                    }
+                fetching_remote_data = true;
+                int time_elapsed = 0;
 
-                    Toast toast = Toast.makeText(getApplicationContext(), raw_data.toString(), Toast.LENGTH_LONG);
-                    toast.show();
+                Fetchables fetchables = new Fetchables();
+                fetchables.add( DATA_BALANCE,
+                        "//td[@class='corUm fontWeightDois'][2]",
+                        URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+                fetchables.add( DATA_LAST_DATE,
+                        "//table[@class='consulta'][1]/tbody/tr[@class='rowTable'][3]/td[@class='corUm'][1]",
+                        URL_TO_FETCH_CARD_DATA+this.getCardNumber());
+
+                RemoteParsedData task = new RemoteParsedData(fetchables);
+                Thread thread = new Thread(task);
+                thread.start();
+
+//                    while (fetching_remote_data) {
+//                        Thread.sleep(FETCH_DATA_LOOPTIME_MS);
+//                        time_elapsed += FETCH_DATA_LOOPTIME_MS;
+//                        if (time_elapsed > FETCH_DATA_TIMEOUT_MS) {
+//                            thread.interrupt();
+//                            throw new FetchRemoteDataTimeoutException();
+//                        }
+//                    }
 
 //                    dialog.dismiss();
 
 //                BusinessDaysCalendar business_days = new BusinessDaysCalendar();
 //                DateTime start = DateTime.forDateOnly(2012,1,31);
 //                ArrayList<Integer> bdays = business_days.getBusinessDaysInRange(start, start.plus(0,1,0,0,0,0, DateTime.DayOverflow.LastDay));
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                } catch (FetchRemoteDataTimeoutException e) {
-                    e.printStackTrace();
-                }
-
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -315,13 +318,76 @@ public class DailyVisaVale extends Activity
         }
     }
 
-    private class RemoteParsedData extends AsyncTask<HashMap<String, Object>, Void, HashMap<String, StringBuilder>> {
+    private class Fetchables implements Iterable<Fetchable>{
+        private ArrayList<Fetchable> fetchables = new ArrayList<Fetchable>();
+        private ArrayList<String> names = new ArrayList<String>();
+
+        public void add(String name, String expression, String url) {
+            int i = fetchables.size();
+            fetchables.add(i, new Fetchable(name, expression, url)); 
+            names.add(i, name);
+        }
         
-        public final HashMap<URL, TagNode> tagnode_cache = new HashMap<URL, TagNode>();
+        public Fetchable getByName(String name) throws Exception {
+            int i = names.indexOf(name);
+            if (i >= 0)
+                return fetchables.get(i);
+            else
+                throw new Exception("Fetchable named '"+name+"' doesn't exist.");
+        }
 
         @Override
-        protected HashMap<String, StringBuilder> doInBackground(HashMap<String, Object>... to_fetch) {
+        public Iterator<Fetchable> iterator() {
+            return fetchables.iterator();
+        }
+    }
 
+    public class Fetchable {
+        private String name;
+        private String expression;
+        private String url;
+        
+        public Fetchable(String name, String expression, String url) {
+            setName(name);
+            setExpression(expression);
+            setUrl(url);
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getExpression() {
+            return expression;
+        }
+
+        public void setExpression(String expression) {
+            this.expression = expression;
+        }
+
+        public String getUrl() {
+            return url;
+        }
+
+        public void setUrl(String url) {
+            this.url = url;
+        }
+    }
+
+    private class RemoteParsedData implements Runnable {
+        private Fetchables _fetchables;
+        private HashMap<String, StringBuilder> parsed_values = new HashMap<String, StringBuilder>();
+        public final HashMap<URL, TagNode> tagnode_cache = new HashMap<URL, TagNode>();
+
+        public RemoteParsedData(Fetchables fetchables) {
+            setFetchables(fetchables);
+        }
+
+        public void run() {
             // parser from htmlcleaner
             HtmlCleaner pageParser = new HtmlCleaner();
             CleanerProperties props = pageParser.getProperties();
@@ -330,62 +396,64 @@ public class DailyVisaVale extends Activity
             props.setRecognizeUnicodeChars(true);
             props.setOmitComments(true);
 
-            // return values
-            HashMap<String, StringBuilder> parsed_values = new HashMap<String, StringBuilder>();
-            
-            for (String data_name_key : to_fetch[0].keySet()) {
-                HashMap<String, String> hashMap = (HashMap<String, String>)to_fetch[0].get(data_name_key);
-                for (String key : hashMap.keySet()) {
-                    String[] strings = {key, hashMap.get(key)};
-                    parsed_values.put(data_name_key, new StringBuilder());
+            for (Fetchable fetchable : getFetchables()) {
+                String data_name = fetchable.getName();
+                String data_url = fetchable.getUrl();
+                String data_expression = fetchable.getExpression();
+
+                parsed_values.put(data_name, new StringBuilder());
+                try {
+                    URL url = new URL(data_url);
+
+                    TagNode node = tagnode_cache.containsKey(url) ?
+                            tagnode_cache.get(url) :
+                            pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
 
                     try {
-                        URL url = new URL(strings[1]);
-
-                        // process xpath_expression due a possible bug in API 7 (following-sibling)
-                        String xpath_expression_modified = strings[0];
-                        String[] xpath_expression_parts = xpath_expression_modified.split("---");
-                        String xpath_expression = xpath_expression_parts[0];
-                        Integer nodes_ahead = xpath_expression_parts.length > 1 ? Integer.parseInt(xpath_expression_parts[1]) : 0;
-
-                        TagNode node = tagnode_cache.containsKey(url) ?
-                                tagnode_cache.get(url) :
-                                pageParser.clean(new InputStreamReader(url.openConnection().getInputStream()));
-
-                        try {
-                            Object[] td_nodes = node.evaluateXPath(xpath_expression);
-                            for (int i =0; i < td_nodes.length; i++) {
-                                if (parsed_values.get(data_name_key).length() == 0) {
-                                    List children = ((TagNode)td_nodes[i]).getChildren();
-                                    if (children.size() > 0) {
-                                        parsed_values.get(data_name_key).append(((TagNode)td_nodes[i+nodes_ahead]).getChildren().get(0).toString());
-                                        Log.v(LOG_TAG_ALL, "Found value: "+parsed_values);
-                                    }
-                                } else {
-                                    break;
+                        Object[] td_nodes = node.evaluateXPath(data_expression);
+                        for (int i =0; i < td_nodes.length; i++) {
+                            if (parsed_values.get(data_name).length() == 0) {
+                                List children = ((TagNode)td_nodes[i]).getChildren();
+                                if (children.size() > 0) {
+                                    parsed_values.get(data_name).append(((TagNode)td_nodes[i]).getChildren().get(0).toString());
+                                    Log.v(LOG_TAG_ALL, "Found value: "+parsed_values);
                                 }
+                            } else {
+                                break;
                             }
-                        } catch (XPatherException e) {
-                            e.printStackTrace();
                         }
-                    } catch (IOException e) {
+                    } catch (XPatherException e) {
                         e.printStackTrace();
                     }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
             }
             
-            return parsed_values;
+            handler.sendEmptyMessage(0);
         }
 
-        @Override
-        public void onPostExecute(HashMap<String, StringBuilder> result) {
+        private Handler handler = new Handler() {
+            @Override
+            public void handleMessage(Message msg) {
+                for (String key : parsed_values.keySet()) {
+                    card.raw_data.put(key, parsed_values.get(key));
+                }
 
-            for (String key : result.keySet()) {
-                card.raw_data.put(key, result.get(key));
-            }     
-            
-            card.fetching_remote_data = false;
-            dialog.dismiss();
+                card.fetching_remote_data = false;
+                dialog.dismiss();
+
+                Toast toast = Toast.makeText(getApplicationContext(), card.raw_data.toString(), Toast.LENGTH_LONG);
+                toast.show();
+            }
+        };
+
+        public Fetchables getFetchables() {
+            return this._fetchables;
+        }
+
+        public void setFetchables(Fetchables fetchables) {
+            this._fetchables = fetchables;
         }
     }
 
