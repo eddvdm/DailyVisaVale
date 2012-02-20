@@ -71,8 +71,8 @@ public class BusinessDaysCalendar {
         return business_days;
     }
 
-    public ArrayList<Integer> getBusinessDaysInRange(DateTime start, DateTime end) {
-        ArrayList<Integer> business_days = new ArrayList<Integer>();
+    public ArrayList<DateTime> getBusinessDaysInRange(DateTime start, DateTime end) {
+        ArrayList<DateTime> business_days = new ArrayList<DateTime>();
         int days_in_range = start.numDaysFrom(end) - 1; // last day doesn't count
 
         // num of days to include each week starting from sunday
@@ -83,21 +83,21 @@ public class BusinessDaysCalendar {
             switch (week_day) {
                 case 1: // sunday
                     if (isSundayBusinessDay())
-                        business_days.add(start.getDay());
+                        business_days.add(start);
 
                     for (int j = 1; j <= days_from_sunday; j++) {
                         start = start.plusDays(1);
-                        business_days.add(start.getDay());
+                        business_days.add(start);
                         if (++i >= days_in_range)
                             break;
                     }
                     break;
                 case 7: // saturday
                     if (isSaturdayBusinessDay())
-                        business_days.add(start.getDay());
+                        business_days.add(start);
                     break;
                 default:
-                    business_days.add(start.getDay());
+                    business_days.add(start);
                     break;
             }
             start = start.plusDays(1);

@@ -32,7 +32,6 @@
             android:id="@+id/set_card_number"
             android:text=">"
             android:imeOptions="actionGo"
-            android:onClick="inputCardNumber"
             />
     </LinearLayout>
 </LinearLayout>
