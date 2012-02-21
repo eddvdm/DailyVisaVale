@@ -40,8 +40,8 @@ public class DailyVisaVale extends Activity
     public CardData card = new CardData();
     public UI ui = new UI();
     
-    public ProgressDialog dialog = null;
-    protected String current_card_number = null;
+    private ProgressDialog dialog = null;
+    private String current_card_number = null;
 
     /** Called when the activity is first created. */
     @Override
@@ -62,7 +62,7 @@ public class DailyVisaVale extends Activity
         card_numbers.buildCardNumberAutoComplete(this);
     }
 
-    public class GlobalSettings {
+    private class GlobalSettings {
         public final static int SETTING_TIMEZONE = 0;
         public final static int SETTING_LOCALE = 1;
         public final static int SETTING_IGNORE_TODAY = 2;
@@ -106,7 +106,7 @@ public class DailyVisaVale extends Activity
         }
     }
     
-    public class CardNumbers {
+    private class CardNumbers {
         /**
          * Called onClick event on main button at main interface.
          * Validates, saves and sets card number.
@@ -268,11 +268,11 @@ public class DailyVisaVale extends Activity
         private static final int FETCH_DATA_TIMEOUT_MS = 10000;
         private static final int FETCH_DATA_LOOPTIME_MS = 1000;
 
-        protected String card_number;
-        private final HashMap<Character, Object> raw_data = new HashMap<Character, Object>();
-        private final HashMap<Character, Object> parsed_data = new HashMap<Character, Object>();
-        private final ArrayList<DateTime> current_period_days = new ArrayList<DateTime>();
-        private final ArrayList<DateTime> remaining_period_days = new ArrayList<DateTime>();
+        private String card_number;
+        private HashMap<Character, Object> raw_data = new HashMap<Character, Object>();
+        private HashMap<Character, Object> parsed_data = new HashMap<Character, Object>();
+        private ArrayList<DateTime> current_period_days = new ArrayList<DateTime>();
+        private ArrayList<DateTime> period_remaining_days = new ArrayList<DateTime>();
 
         public void setAndLoad(String card_number) throws Exception{
             if (!numberIsValid(card_number))
@@ -281,7 +281,6 @@ public class DailyVisaVale extends Activity
             this.setCardNumber(card_number);
 //            this.loadData();            
         }
-
 //        private void loadData() {
 //            final SharedPreferences prefs_data = getSharedPreferences(PREFS_CARD_PREFIX+this.getCardNumber(), 0);
 //
@@ -295,7 +294,6 @@ public class DailyVisaVale extends Activity
 //                toast.show();
 //            }
 //        }
-
         public void fetchRemoteData() {
             try {
                 // start fetch process
@@ -367,10 +365,11 @@ public class DailyVisaVale extends Activity
             TimeZone timezone = TimeZone.getTimeZone(global_settings.asString(GlobalSettings.SETTING_TIMEZONE));
             DateTime today = DateTime.today(timezone);
             
-            remaining_period_days.clear();
-            for (DateTime day : current_period_days) {
+            ArrayList<DateTime> period_days = getCurrentPeriodDays();
+            period_remaining_days.clear();
+            for (DateTime day : period_days) {
                 if (day.isInTheFuture(timezone) || (!isToIgnoreToday() && day.isSameDayAs(today)) ) {
-                    remaining_period_days.add(day);                    
+                    period_remaining_days.add(day);
                 }
             }
         }
@@ -398,10 +397,75 @@ public class DailyVisaVale extends Activity
             DateTime last_charged_day = charges_dates.size() == 0 ? today.minusDays(1) : charges_dates.get(0);
             return today.isSameDayAs(last_charged_day);
         }
+
+        public HashMap<Character, Object> getRawData() {
+            return raw_data;
+        }
+
+        public HashMap<Character, Object> getParsedData() {
+            return parsed_data;
+        }
+
+        public ArrayList<DateTime> getCurrentPeriodDays() {
+            if (current_period_days.size() == 0)
+                buildCurrentPeriodCalendar();
+            return current_period_days;
+        }
+
+        public ArrayList<DateTime> getPeriodRemainingDays() {
+            if (period_remaining_days.size() == 0)
+                processPeriodRemainingDays();            
+            return period_remaining_days;
+        }
+        
+        public Float getRemainingBalance() throws Exception {
+            if (!parsed_data.containsKey(DATA_BALANCE)) 
+                throw new Exception("Parsed data doesn't seem to exist.");
+            
+            return (Float) parsed_data.get(DATA_BALANCE);
+        }
+
+        public Float getParsedDataAsFloat(char data_name_key) throws Exception {
+            if (!parsed_data.containsKey(data_name_key))
+                throw new Exception("Parsed data at key '"+data_name_key+"' not defined.");
+            return (Float) parsed_data.get(data_name_key);
+        }
+        
+        private class MetaStats {
+            
+            public static final int DAILY_AMOUNT_LEFT_TO_SPENT = 10;
+
+            private DateTime last_update;
+            private Boolean expired;
+
+            public MetaStats() {
+
+            }
+
+            public void expire() {
+                setExpired(true);
+            }
+
+            public DateTime getLastUpdate() {
+                return last_update;
+            }
+
+            public void setLastUpdate(DateTime last_update) {
+                this.last_update = last_update;
+            }
+
+            public Boolean getExpired() {
+                return expired;
+            }
+
+            public void setExpired(Boolean expired) {
+                this.expired = expired;
+            }
+        }
         
     }
 
-    private class Fetchables implements Iterable<Fetchable>{
+    private class Fetchables implements Iterable<Fetchable> {
         private ArrayList<Fetchable> fetchables = new ArrayList<Fetchable>();
         private ArrayList<Character> names = new ArrayList<Character>();
 
@@ -425,7 +489,7 @@ public class DailyVisaVale extends Activity
         }
     }
 
-    public class Fetchable {
+    private class Fetchable {
         public static final byte TYPE_SINGLE = 1;
         public static final byte TYPE_COLLECTION = 2;
 
@@ -576,19 +640,26 @@ public class DailyVisaVale extends Activity
                 switch (msg.what) {
 
                     case RESULT_ALL_DATA_DONE:
-                        card.raw_data.putAll(fetched_values);
-                        card.parseRawData();
-                        card.buildCurrentPeriodCalendar();
-                        card.processPeriodRemainingDays();
-                        dialog.dismiss();
 
-                        Toast toast = Toast.makeText(getApplicationContext(), card.parsed_data.get(CardData.DATA_BALANCE).toString(), Toast.LENGTH_LONG);
-                        toast.show();
+                        try {
+                            card.raw_data.putAll(fetched_values);
+                                card.parseRawData();
+                            card.buildCurrentPeriodCalendar();
+                            card.processPeriodRemainingDays();
+                            Float daily_amount = new MetaStatDailyAmount(card).getAsFloat();
 
-                        Log.v(LOG_TAG_ALL, card.toString());
-                        Log.v(LOG_TAG_ALL, card.parsed_data.toString());
-                        Log.v(LOG_TAG_ALL, card.current_period_days.toString());
-                        Log.v(LOG_TAG_ALL, card.remaining_period_days.toString());
+                            dialog.dismiss();
+
+                            Toast toast = Toast.makeText(getApplicationContext(), daily_amount.toString(), Toast.LENGTH_LONG);
+                            toast.show();
+
+                            Log.v(LOG_TAG_ALL, card.toString());
+                            Log.v(LOG_TAG_ALL, card.parsed_data.toString());
+                            Log.v(LOG_TAG_ALL, card.current_period_days.toString());
+                            Log.v(LOG_TAG_ALL, card.period_remaining_days.toString());
+                        } catch (Exception e) {
+                            e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
+                        }
 
                         break;
 
@@ -646,7 +717,7 @@ public class DailyVisaVale extends Activity
         }
     }
 
-    public class UI {
+    private class UI {
         public void setupMainInterface() {
             // button onclick
             Button bt_input_card_number = (Button) findViewById(R.id.set_card_number);
@@ -686,11 +757,11 @@ public class DailyVisaVale extends Activity
         }
     }
 
-    public class CardNumberExistsException extends Exception {
+    private class CardNumberExistsException extends Exception {
 
     }
 
-    public class FetchRemoteDataTimeoutException extends Exception {
+    private class FetchRemoteDataTimeoutException extends Exception {
 
     }
 }
