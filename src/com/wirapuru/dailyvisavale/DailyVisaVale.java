@@ -37,7 +37,7 @@ public class DailyVisaVale extends Activity
 
     public GlobalSettings global_settings;
     public CardNumbers card_numbers = new CardNumbers();
-    public CardData card = new CardData();
+    public CardData card;
     public UI ui = new UI();
     
     private ProgressDialog dialog = null;
@@ -124,6 +124,7 @@ public class DailyVisaVale extends Activity
                 logCardNumbers();
 
                 try {
+                    card = new CardData();
                     card.setAndLoad(str_card_number);
                     card.fetchRemoteData();
                 } catch (Exception e) {
