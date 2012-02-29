@@ -165,8 +165,26 @@ public class DailyVisaVale extends Activity
                 final AutoCompleteTextView txt_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
                 ArrayAdapter<String> adapter =  new ArrayAdapter<String>(context, R.layout.card_number_item, card_numbers_list);
                 txt_card_number.setThreshold(0);
-
                 txt_card_number.setAdapter(adapter);
+                
+                txt_card_number.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+                    @Override
+                    public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                        Toast.makeText(getApplicationContext(), "clicked "+l, Toast.LENGTH_LONG).show();
+                    }
+                });
+
+                txt_card_number.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                    @Override
+                    public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+                        Toast.makeText(getApplicationContext(), "longclicked "+l, Toast.LENGTH_LONG).show();
+                    }
+
+                    @Override
+                    public void onNothingSelected(AdapterView<?> adapterView) {
+                        //To change body of implemented methods use File | Settings | File Templates.
+                    }
+                });
             }
         }
 

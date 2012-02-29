@@ -1,38 +1,132 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:layout_width="fill_parent"
-    android:layout_height="fill_parent"
-    >
-    <TextView
-        android:layout_width="260dp"
-        android:layout_height="wrap_content"
-        android:text="Card Number"
-        android:layout_gravity="center"
-        android:layout_marginTop="40dp"
-        />
-    <LinearLayout
-        android:layout_height="wrap_content"
-        android:layout_width="260dp"
-        android:layout_gravity="center"
+              android:orientation="vertical"
+              android:layout_width="fill_parent"
+              android:layout_height="fill_parent"
+              android:background="#f2f2f2"
         >
-        <AutoCompleteTextView
-                android:imeOptions="actionDone"
-                android:layout_height="wrap_content"
-                android:layout_width="220dp"
-                android:height="10dp"
-                android:width="16dp"
-                android:id="@+id/card_number"
-                android:inputType="number"
-                android:maxLength="16"
-            />
-        <Button
-            android:layout_height="wrap_content"
-            android:layout_width="40dp"
-            android:id="@+id/set_card_number"
-            android:text=">"
-            android:imeOptions="actionGo"
-            />
+    <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                  android:orientation="vertical"
+                  android:layout_width="fill_parent"
+                  android:layout_height="fill_parent"
+                  android:background="@drawable/bg_view_01"
+                  android:gravity="center_horizontal"
+            >
+
+        <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                      android:id="@+id/buttonlayout"
+                      android:orientation="horizontal"
+                      android:layout_width="fill_parent"
+                      android:layout_height="wrap_content"
+                      android:height="48dp"
+                      android:gravity="left|top"
+                      android:background="#FEB501"
+                      android:paddingTop="2dp"
+                      android:paddingBottom="2dp">
+            <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                          android:id="@+id/buttonlayout2"
+                          android:orientation="horizontal"
+                          android:layout_height="wrap_content"
+                          android:gravity="left|center_vertical"
+                          android:layout_gravity="left"
+                          android:layout_width="wrap_content"
+                          android:paddingLeft="5dp" >
+                <ImageButton android:id="@+id/imgbtn1"
+                             android:layout_width="48dp"
+                             android:layout_height="48dp"
+                             android:background="@drawable/ic_launcher_dvv"
+                             />
+                <TextView android:id="@+id/txtTest"
+                          android:layout_width="fill_parent"
+                          android:layout_height="fill_parent"
+                          android:textStyle="bold"
+                          android:text="@string/app_name"
+                          android:textColor="#5E7AC6"
+                          android:textSize="18sp"
+                          android:gravity="center_vertical"
+                          android:paddingLeft="10dp" />
+            </LinearLayout>
+        </RelativeLayout>
+
+        <RelativeLayout
+            android:layout_height="5dp"
+            android:layout_width="fill_parent"
+            android:background="#5E7AC6">
+        </RelativeLayout>
+
+        <View
+            android:layout_width="fill_parent"
+            android:layout_height="5dip"
+            android:background="@drawable/drop_shadow">
+        </View>
+
+        <LinearLayout
+                android:orientation="vertical"
+                android:layout_width="wrap_content"
+                android:layout_height="fill_parent"
+                android:layout_marginTop="80dp"
+                >
+            <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Número do cartão"
+                    android:textSize="20sp"
+                    android:textColor="#FEB501"
+                    />
+            <LinearLayout
+                    android:layout_marginTop="0dp"
+                    android:orientation="vertical"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    >
+                <AutoCompleteTextView
+                        android:imeOptions="actionDone"
+                        android:layout_height="60dp"
+                        android:layout_width="220dp"
+                        android:layout_gravity="center_vertical"
+                        android:id="@+id/card_number"
+                        android:inputType="number"
+                        android:maxLength="16"
+                        android:textSize="20sp"
+                        android:textColor="#5E7AC6"
+                        android:textStyle="bold"
+                        />
+                <Button
+                        android:layout_marginTop="10dp"
+                        android:layout_height="80dp"
+                        android:layout_width="220dp"
+                        android:id="@+id/set_card_number"
+                        android:text="Consultar"
+                        android:imeOptions="actionGo"
+                        android:onClick="card_numbers.inputCardNumber"
+                        />
+            </LinearLayout>
+        </LinearLayout>
+
+
+        <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+                        android:id="@+id/buttonlayout"
+                        android:orientation="horizontal"
+                        android:layout_width="fill_parent"
+                        android:layout_height="wrap_content"
+                        android:height="48dp"
+                        android:gravity="left|top"
+                        android:background="#FEB501"
+                >
+            <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="48dp"
+                    android:text="Número do cartão"
+                    android:textSize="20sp"
+                    android:textColor="#FEB501"
+                    />
+
+        </LinearLayout>
     </LinearLayout>
+
+
+
 </LinearLayout>
+
 
