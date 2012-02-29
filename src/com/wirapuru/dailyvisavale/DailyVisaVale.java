@@ -6,16 +6,25 @@ import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.*;
 import android.util.Log;
 import android.view.View;
 import android.widget.*;
 import hirondelle.date4j.DateTime;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.params.HttpParams;
 import org.htmlcleaner.CleanerProperties;
 import org.htmlcleaner.HtmlCleaner;
 import org.htmlcleaner.TagNode;
 import org.htmlcleaner.XPatherException;
 import org.json.JSONArray;
+import org.json.JSONException;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -39,6 +48,7 @@ public class DailyVisaVale extends Activity
     public CardNumbers card_numbers = new CardNumbers();
     public CardData card;
     public UI ui = new UI();
+    public Util util = new Util();
     
     private ProgressDialog dialog = null;
     private String current_card_number = null;
@@ -124,9 +134,17 @@ public class DailyVisaVale extends Activity
                 logCardNumbers();
 
                 try {
+                    util.checkRemoteDataHostAvailability();
+
                     card = new CardData();
                     card.setAndLoad(str_card_number);
                     card.fetchRemoteData();
+                } catch (Util.ConnectionNotAvailableException e) {
+                    // todo proper dialog handling no connection
+                    Toast.makeText(getApplicationContext(), "Não existe conexão: "+e.getMessage(), Toast.LENGTH_LONG).show();
+                } catch (Util.RemoteDataHostNotAvailableException e) {
+                    // todo proper dialog handling not reaching remote host
+                    Toast.makeText(getApplicationContext(), "Servidor remoto do Visa Vale não está disponível: "+e.getMessage(), Toast.LENGTH_LONG).show();
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -159,7 +177,7 @@ public class DailyVisaVale extends Activity
         }
 
         public void buildCardNumberAutoComplete(Context context) {
-            List<String> card_numbers_list = Util.JSONArrayToList(getTypedCardNumbers());
+            List<String> card_numbers_list = util.JSONArrayToList(getTypedCardNumbers());
 
             if (card_numbers_list.size() > 0) {
                 final AutoCompleteTextView txt_card_number = (AutoCompleteTextView) findViewById(R.id.card_number);
@@ -196,7 +214,7 @@ public class DailyVisaVale extends Activity
                 if (prefs_card_numbers.contains(PREF_CARD_NUMBERS_JSON)) {
                     final String json_string = prefs_card_numbers.getString(PREF_CARD_NUMBERS_JSON, null);
                     if (json_string != null) {
-                        List<String> card_numbers = Util.JSONArrayToList(new JSONArray(json_string));
+                        List<String> card_numbers = util.JSONArrayToList(new JSONArray(json_string));
                         if (card_numbers.contains(str_card_number))
                             throw new CardNumberExistsException();
                         for (String card_number : card_numbers)
@@ -349,16 +367,16 @@ public class DailyVisaVale extends Activity
             for (Character data_name : raw_data.keySet()) {
                 switch (data_name) {
                     case DATA_BALANCE:
-                        parsed_data.put(DATA_BALANCE, Util.extractMoneyValue(raw_data.get(DATA_BALANCE).toString()));
+                        parsed_data.put(DATA_BALANCE, util.extractMoneyValue(raw_data.get(DATA_BALANCE).toString()));
                         break;
                     case DATA_LAST_DATE:
-                        parsed_data.put(DATA_LAST_DATE, Util.extractDate(raw_data.get(DATA_LAST_DATE).toString()));
+                        parsed_data.put(DATA_LAST_DATE, util.extractDate(raw_data.get(DATA_LAST_DATE).toString()));
                         break;
                     case DATA_CHARGES_DATES:
                         ArrayList<DateTime> values = new ArrayList<DateTime>();
                         // todo solve unchecked cast
                         for (String date_string : (ArrayList<String>) raw_data.get(DATA_CHARGES_DATES))
-                            values.add(Util.extractDate(date_string));
+                            values.add(util.extractDate(date_string));
                         parsed_data.put(DATA_CHARGES_DATES, values);
                         break;
                 }
@@ -774,6 +792,70 @@ public class DailyVisaVale extends Activity
 
             builder.create().show();
         }
+    }
+
+    private class Util {
+        private final static String REMOTE_DATA_HOST_URL = "http://vvm.com.br";
+
+
+        public List<String> JSONArrayToList(JSONArray json_array) {
+            List<String> list = new ArrayList<String>();
+            try {
+                for (int i =0; i < json_array.length(); i++)
+                    list.add(json_array.getString(i));
+            } catch (JSONException e) {
+                Log.w(DailyVisaVale.LOG_TAG_ALL, e.getMessage());
+            }
+            return list;
+        }
+
+        public Float extractMoneyValue(String value) {
+            return Float.parseFloat(value.split(" ")[1].replace(".","").replace(",","."));
+        }
+
+        public DateTime extractDate(String value) {
+            String[] parts = value.split("/", 3);
+            int day = Integer.parseInt(parts[0]);
+            int month = Integer.parseInt(parts[1]);
+            // todo handle default year when value is from different than from today (i.e. 31/12)
+            int year = parts.length > 2 ? Integer.parseInt(parts[2]) : DateTime.today(TimeZone.getDefault()).getYear();
+
+            return DateTime.forDateOnly(year, month, day);
+        }
+
+
+        public void checkRemoteDataHostAvailability() throws ConnectionNotAvailableException, RemoteDataHostNotAvailableException {
+            checkConnectivity();
+
+            // snippet adapted from http://stackoverflow.com/questions/693997/how-to-set-httpresponse-timeout-for-android-in-java
+            HttpGet httpGet = new HttpGet(REMOTE_DATA_HOST_URL);
+            HttpParams httpParameters = new BasicHttpParams();
+            // Set the timeout in milliseconds until a connection is established.
+            // The default value is zero, that means the timeout is not used.
+            int timeoutConnection = 3000;
+            HttpConnectionParams.setConnectionTimeout(httpParameters, timeoutConnection);
+            // Set the default socket timeout (SO_TIMEOUT)
+            // in milliseconds which is the timeout for waiting for data.
+            int timeoutSocket = 5000;
+            HttpConnectionParams.setSoTimeout(httpParameters, timeoutSocket);
+
+            DefaultHttpClient httpClient = new DefaultHttpClient(httpParameters);
+            try {
+                HttpResponse response = httpClient.execute(httpGet);
+            } catch (Exception e) {
+                Log.v(LOG_TAG_ALL, e.getMessage());
+                throw new RemoteDataHostNotAvailableException();
+            }
+        }
+
+        public void checkConnectivity() throws ConnectionNotAvailableException {
+            NetworkInfo networkInfo = ((ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE)).getActiveNetworkInfo();
+            if (!((networkInfo != null) && networkInfo.isConnected()))
+                throw new ConnectionNotAvailableException();
+        }
+        
+        public class ConnectionNotAvailableException extends Exception {}
+        public class RemoteDataHostNotAvailableException extends Exception {}
     }
 
     private class CardNumberExistsException extends Exception {
