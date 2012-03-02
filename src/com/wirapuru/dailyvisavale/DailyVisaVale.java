@@ -42,7 +42,7 @@ public class DailyVisaVale extends Activity
     public static final String PREF_LAST_CARD_NUMBER = "card_number";
 
     public static final String LOG_TAG_ALL = "dvv";
-    public static final String URL_TO_FETCH_CARD_DATA = "http://www.cbss.com.br/inst/convivencia/SaldoExtrato.jsp?numeroCartao=";
+    public static final String URL_TO_FETCH_CARD_DATA = "http://www.cbss.com.br/inst/convivencia/SaldoExtrato.jsp?periodoSelecionado=1&numeroCartao=";
 
     public GlobalSettings global_settings;
     public CardNumbers card_numbers = new CardNumbers();
@@ -370,14 +370,24 @@ public class DailyVisaVale extends Activity
                         parsed_data.put(DATA_BALANCE, util.extractMoneyValue(raw_data.get(DATA_BALANCE).toString()));
                         break;
                     case DATA_LAST_DATE:
-                        parsed_data.put(DATA_LAST_DATE, util.extractDate(raw_data.get(DATA_LAST_DATE).toString()));
+                        try {
+                            parsed_data.put(DATA_LAST_DATE, util.extractDate(raw_data.get(DATA_LAST_DATE).toString()));
+                        } catch (Util.CannotExtractDateFromStringException e) {
+                            // essential
+                            ui.showFatalError("Não foi possível recuperar a data do último benefício.");
+                        }
                         break;
                     case DATA_CHARGES_DATES:
-                        ArrayList<DateTime> values = new ArrayList<DateTime>();
-                        // todo solve unchecked cast
-                        for (String date_string : (ArrayList<String>) raw_data.get(DATA_CHARGES_DATES))
-                            values.add(util.extractDate(date_string));
-                        parsed_data.put(DATA_CHARGES_DATES, values);
+                        try {
+                            ArrayList<DateTime> values = new ArrayList<DateTime>();
+                            // todo solve unchecked cast
+                            for (String date_string : (ArrayList<String>) raw_data.get(DATA_CHARGES_DATES))
+                                values.add(util.extractDate(date_string));
+                            parsed_data.put(DATA_CHARGES_DATES, values);
+                        } catch (Util.CannotExtractDateFromStringException e) {
+                            // for now, ignore
+                            break;
+                        }
                         break;
                 }
             }
@@ -680,7 +690,7 @@ public class DailyVisaVale extends Activity
 
                         try {
                             card.raw_data.putAll(fetched_values);
-                                card.parseRawData();
+                            card.parseRawData();
                             card.buildCurrentPeriodCalendar();
                             card.processPeriodRemainingDays();
                             Float daily_amount = new MetaStatDailyAmount(card).getAsFloat();
@@ -792,6 +802,10 @@ public class DailyVisaVale extends Activity
 
             builder.create().show();
         }
+
+        public void showFatalError(String msg) {
+            Toast.makeText(getApplicationContext(), "Fatal error: "+msg, Toast.LENGTH_LONG);
+        }
     }
 
     private class Util {
@@ -813,7 +827,11 @@ public class DailyVisaVale extends Activity
             return Float.parseFloat(value.split(" ")[1].replace(".","").replace(",","."));
         }
 
-        public DateTime extractDate(String value) {
+        public DateTime extractDate(String value) throws CannotExtractDateFromStringException{
+            // test if it is an expected date format
+            if (value.indexOf("/") == -1)
+                throw new CannotExtractDateFromStringException();
+
             String[] parts = value.split("/", 3);
             int day = Integer.parseInt(parts[0]);
             int month = Integer.parseInt(parts[1]);
@@ -856,6 +874,7 @@ public class DailyVisaVale extends Activity
         
         public class ConnectionNotAvailableException extends Exception {}
         public class RemoteDataHostNotAvailableException extends Exception {}
+        public class CannotExtractDateFromStringException extends Exception {}
     }
 
     private class CardNumberExistsException extends Exception {
